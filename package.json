@@ -29,6 +29,9 @@
         "postinstall": "husky install",
         "migration:create": "pnpm typeorm migration:create"
     },
+    "dependencies": {
+        "luxon": "^3.4.0"
+    },
     "lint-staged": {
         "*.{js,jsx,ts,tsx,json,md}": "eslint --fix"
     },
