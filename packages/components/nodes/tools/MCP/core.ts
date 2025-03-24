@@ -97,12 +97,12 @@ export class MCPToolkit extends BaseToolkit {
                 // Merge process.env with custom env variables
                 const processEnv = { ...process.env, ...(env || {}) }
                 
-                console.log(`Spawning MCP server: ${command} ${(args || []).join(' ')}`)
+                // Spawn the server process
                 
                 // Determine the correct command to use
-                let finalCommand = command;
+                let finalCommand = command
                 if (command === 'npx' && process.platform === 'win32') {
-                    finalCommand = 'npx.cmd';
+                    finalCommand = 'npx.cmd'
                 }
                 
                 // Spawn the process
@@ -123,26 +123,17 @@ export class MCPToolkit extends BaseToolkit {
                 
                 // Set up error handling for the process
                 if (this.process) {
-                    this.process.on('error', (err) => {
-                        console.error(`MCP server process error: ${err.message}`)
+                    this.process.on('error', () => {
+                        // Handle process error
                     })
                     
-                    this.process.on('exit', (code, signal) => {
-                        console.log(`MCP server process exited with code ${code} and signal ${signal}`)
+                    this.process.on('exit', () => {
                         processRegistry.delete(this.processId)
                     })
-                    
-                    // Log stderr for debugging
-                    if (this.process.stderr) {
-                        this.process.stderr.on('data', (data) => {
-                            console.error(`MCP server stderr: ${data.toString().trim()}`)
-                        })
-                    }
                     
                     // Wait a short time for process to start
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
-                            console.log('MCP server process started successfully')
                             resolve()
                         } else {
                             reject(new Error('MCP server process failed to start or exited too quickly'))
@@ -197,13 +188,13 @@ export class MCPToolkit extends BaseToolkit {
                 
                 // Try graceful termination first
                 if (this.process.exitCode === null) {
-                    console.log(`Terminating MCP server process ${this.processId}`)
+                    // Terminate the process
                     this.process.kill('SIGTERM')
                     
                     // Force kill after timeout if still running
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
-                            console.log(`Force killing MCP server process ${this.processId}`)
+                            // Force kill if still running
                             this.process.kill('SIGKILL')
                         }
                     }, 2000)
