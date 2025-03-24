@@ -4,7 +4,8 @@ import { MCPToolkit } from '../core'
 
 const mcpServerConfig = `{
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"]
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"],
+    "env": {}
 }`
 
 class Custom_MCP implements INode {
@@ -17,7 +18,6 @@ class Custom_MCP implements INode {
     category: string
     baseClasses: string[]
     documentation: string
-    credential: INodeParams
     inputs: INodeParams[]
 
     constructor() {
@@ -27,14 +27,15 @@ class Custom_MCP implements INode {
         this.type = 'Custom MCP Tool'
         this.icon = 'customMCP.png'
         this.category = 'Tools (MCP)'
-        this.description = 'Custom MCP Config'
-        this.documentation = 'https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search'
+        this.description = 'Custom MCP Server Configuration for connecting to any MCP server'
+        this.documentation = 'https://github.com/modelcontextprotocol/servers'
         this.inputs = [
             {
                 label: 'MCP Server Config',
                 name: 'mcpServerConfig',
                 type: 'code',
                 hideCodeExecute: true,
+                description: 'JSON configuration for the MCP server including command, args, and environment variables',
                 placeholder: mcpServerConfig
             },
             {
@@ -42,7 +43,8 @@ class Custom_MCP implements INode {
                 name: 'mcpActions',
                 type: 'asyncMultiOptions',
                 loadMethod: 'listActions',
-                refresh: true
+                refresh: true,
+                description: 'Select which MCP tools to expose to the LLM'
             }
         ]
         this.baseClasses = ['Tool']
@@ -61,11 +63,12 @@ class Custom_MCP implements INode {
                     description: rest.description || name
                 }))
             } catch (error) {
+                console.error('Error listing MCP actions:', error)
                 return [
                     {
                         label: 'No Available Actions',
                         name: 'error',
-                        description: 'No available actions, please check your API key and refresh'
+                        description: error instanceof Error ? error.message : 'Failed to connect to MCP server'
                     }
                 ]
             }
@@ -73,19 +76,24 @@ class Custom_MCP implements INode {
     }
 
     async init(nodeData: INodeData): Promise<any> {
-        const tools = await this.getTools(nodeData)
+        try {
+            const tools = await this.getTools(nodeData)
 
-        const _mcpActions = nodeData.inputs?.mcpActions
-        let mcpActions = []
-        if (_mcpActions) {
-            try {
-                mcpActions = typeof _mcpActions === 'string' ? JSON.parse(_mcpActions) : _mcpActions
-            } catch (error) {
-                console.error('Error parsing mcp actions:', error)
+            const _mcpActions = nodeData.inputs?.mcpActions
+            let mcpActions = []
+            if (_mcpActions) {
+                try {
+                    mcpActions = typeof _mcpActions === 'string' ? JSON.parse(_mcpActions) : _mcpActions
+                } catch (error) {
+                    console.error('Error parsing MCP actions:', error)
+                }
             }
-        }
 
-        return tools.filter((tool: any) => mcpActions.includes(tool.name))
+            return tools.filter((tool: any) => mcpActions.includes(tool.name))
+        } catch (error) {
+            console.error('Error initializing MCP node:', error)
+            throw error
+        }
     }
 
     async getTools(nodeData: INodeData): Promise<Tool[]> {
@@ -100,29 +108,41 @@ class Custom_MCP implements INode {
             if (typeof mcpServerConfig === 'object') {
                 serverParams = mcpServerConfig
             } else if (typeof mcpServerConfig === 'string') {
-                const serverParamsString = convertToValidJSONString(mcpServerConfig)
+                const serverParamsString = this.convertToValidJSONString(mcpServerConfig)
                 serverParams = JSON.parse(serverParamsString)
             }
 
+            // Validate required parameters
+            if (!serverParams.command) {
+                throw new Error('MCP Server Config must include a "command" property')
+            }
+
+            // Create and initialize the toolkit
             const toolkit = new MCPToolkit(serverParams, 'stdio')
             await toolkit.initialize()
 
             const tools = toolkit.tools ?? []
-
             return tools as Tool[]
         } catch (error) {
-            throw new Error(`Invalid MCP Server Config: ${error}`)
+            throw new Error(`MCP Server initialization failed: ${error instanceof Error ? error.message : String(error)}`)
         }
     }
-}
 
-function convertToValidJSONString(inputString: string) {
-    try {
-        const jsObject = Function('return ' + inputString)()
-        return JSON.stringify(jsObject, null, 2)
-    } catch (error) {
-        console.error('Error converting to JSON:', error)
-        return ''
+    convertToValidJSONString(inputString: string): string {
+        try {
+            // First try direct JSON parsing
+            JSON.parse(inputString)
+            return inputString
+        } catch (e) {
+            // If that fails, try to evaluate as a JavaScript object
+            try {
+                const jsObject = Function('return ' + inputString)()
+                return JSON.stringify(jsObject, null, 2)
+            } catch (error) {
+                console.error('Error converting to JSON:', error)
+                throw new Error('Invalid MCP Server Config format')
+            }
+        }
     }
 }
 
