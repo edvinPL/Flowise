@@ -130,7 +130,7 @@ class Custom_MCP implements INode {
 
     convertToValidJSONString(inputString: string): string {
         try {
-            // First try direct JSON parsing
+            // First try, direct JSON parsing
             JSON.parse(inputString)
             return inputString
         } catch (e) {
