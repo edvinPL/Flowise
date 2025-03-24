@@ -99,29 +99,24 @@ export class MCPToolkit extends BaseToolkit {
                 
                 // Spawn the server process
                 
-                // Determine the correct command to use
                 let finalCommand = command
                 if (command === 'npx' && process.platform === 'win32') {
                     finalCommand = 'npx.cmd'
                 }
                 
-                // Spawn the process
                 this.process = spawn(finalCommand, args || [], {
                     env: processEnv,
                     stdio: ['pipe', 'pipe', 'pipe'],
-                    shell: true // Use shell on all platforms for better command resolution
+                    shell: true
                 })
                 
-                // Register the process for cleanup
                 processRegistry.set(this.processId, this.process)
                 
-                // Create transport using the command and args
                 this.transport = new StdioClientTransport({
                     command: finalCommand,
                     args: args || []
                 })
                 
-                // Set up error handling for the process
                 if (this.process) {
                     this.process.on('error', () => {
                         // Handle process error
@@ -131,14 +126,13 @@ export class MCPToolkit extends BaseToolkit {
                         processRegistry.delete(this.processId)
                     })
                     
-                    // Wait a short time for process to start
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
                             resolve()
                         } else {
                             reject(new Error('MCP server process failed to start or exited too quickly'))
                         }
-                    }, 2000) // Give more time for the command to start
+                    }, 2000)
                 } else {
                     reject(new Error('Failed to spawn process'))
                 }
@@ -181,20 +175,15 @@ export class MCPToolkit extends BaseToolkit {
             this.client = null
         }
         
-        // Terminate the process if running
         if (this.process) {
             try {
                 processRegistry.delete(this.processId)
-                
-                // Try graceful termination first
+                        
                 if (this.process.exitCode === null) {
-                    // Terminate the process
                     this.process.kill('SIGTERM')
-                    
-                    // Force kill after timeout if still running
+                            
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
-                            // Force kill if still running
                             this.process.kill('SIGKILL')
                         }
                     }, 2000)
