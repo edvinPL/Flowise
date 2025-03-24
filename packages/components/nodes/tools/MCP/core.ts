@@ -44,6 +44,7 @@ export class MCPToolkit extends BaseToolkit {
             // TODO: SSE transport
         }
     }
+
     async initialize() {
         if (this._tools === null) {
             try {
@@ -82,6 +83,7 @@ export class MCPToolkit extends BaseToolkit {
             }
         }
     }
+
     private async _spawnProcess(config: any): Promise<void> {
         return new Promise((resolve, reject) => {
             try {
@@ -137,6 +139,7 @@ export class MCPToolkit extends BaseToolkit {
             }
         })
     }
+
     async get_tools(): Promise<Tool[]> {
         if (this._tools === null || this.client === null) {
             throw new Error('Must initialize the toolkit first')
@@ -154,6 +157,7 @@ export class MCPToolkit extends BaseToolkit {
         })
         return Promise.all(toolsPromises)
     }
+
     async cleanup(): Promise<void> {
         // Close client connection if connected
         if (this.client) {
