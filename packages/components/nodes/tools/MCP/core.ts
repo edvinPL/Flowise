@@ -99,8 +99,14 @@ export class MCPToolkit extends BaseToolkit {
                 
                 console.log(`Spawning MCP server: ${command} ${(args || []).join(' ')}`)
                 
+                // Determine the correct command to use
+                let finalCommand = command;
+                if (command === 'npx' && process.platform === 'win32') {
+                    finalCommand = 'npx.cmd';
+                }
+                
                 // Spawn the process
-                this.process = spawn(command, args || [], {
+                this.process = spawn(finalCommand, args || [], {
                     env: processEnv,
                     stdio: ['pipe', 'pipe', 'pipe'],
                     shell: process.platform === 'win32' // Use shell on Windows for better command resolution
@@ -111,7 +117,7 @@ export class MCPToolkit extends BaseToolkit {
                 
                 // Create transport using the command and args
                 this.transport = new StdioClientTransport({
-                    command,
+                    command: finalCommand,
                     args: args || []
                 })
                 
