@@ -3,7 +3,7 @@ import { INode, INodeData, INodeOptionsValue, INodeParams } from '../../../../sr
 import { MCPToolkit } from '../core'
 
 const mcpServerConfig = `{
-    "command": "npx.cmd",
+    "command": "${process.platform === 'win32' ? 'npx.cmd' : 'npx'}",
     "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"],
     "env": {}
 }`

@@ -109,7 +109,7 @@ export class MCPToolkit extends BaseToolkit {
                 this.process = spawn(finalCommand, args || [], {
                     env: processEnv,
                     stdio: ['pipe', 'pipe', 'pipe'],
-                    shell: process.platform === 'win32' // Use shell on Windows for better command resolution
+                    shell: true // Use shell on all platforms for better command resolution
                 })
                 
                 // Register the process for cleanup
@@ -145,9 +145,9 @@ export class MCPToolkit extends BaseToolkit {
                             console.log('MCP server process started successfully')
                             resolve()
                         } else {
-                            reject(new Error('MCP server process failed to start'))
+                            reject(new Error('MCP server process failed to start or exited too quickly'))
                         }
-                    }, 1000) // Give more time for npx to start
+                    }, 2000) // Give more time for the command to start
                 } else {
                     reject(new Error('Failed to spawn process'))
                 }
