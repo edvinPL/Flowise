@@ -30,13 +30,13 @@ export class MCPToolkit extends BaseToolkit {
     client: Client | null = null
     process: ChildProcess | null = null
     processId: string
-    
+
     constructor(serverParams: any, transportType: 'stdio' | 'sse') {
         super()
         this.transport = null
         this.process = null
         this.processId = `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-        
+
         if (transportType === 'stdio') {
             // Store server params for initialization
             this.model_config = serverParams
@@ -58,15 +58,15 @@ export class MCPToolkit extends BaseToolkit {
                         capabilities: {}
                     }
                 )
-                
+
                 if (this.transport === null && this.model_config) {
                     // Spawn the server process
                     await this._spawnProcess(this.model_config)
-                    
+
                     // Connect client to transport
                     if (this.transport) {
                         await this.client.connect(this.transport)
-                        
+
                         // List available tools
                         this._tools = await this.client.request({ method: 'tools/list' }, ListToolsResultSchema)
                         this.tools = await this.get_tools()
@@ -88,44 +88,42 @@ export class MCPToolkit extends BaseToolkit {
         return new Promise((resolve, reject) => {
             try {
                 const { command, args, env } = config
-                
+
                 if (!command) {
                     reject(new Error('Server command is required'))
                     return
                 }
-                
+
                 // Merge process.env with custom env variables
                 const processEnv = { ...process.env, ...(env || {}) }
-                
-                // Spawn the server process
-                
+
                 let finalCommand = command
                 if (command === 'npx' && process.platform === 'win32') {
                     finalCommand = 'npx.cmd'
                 }
-                
+
                 this.process = spawn(finalCommand, args || [], {
                     env: processEnv,
                     stdio: ['pipe', 'pipe', 'pipe'],
                     shell: true
                 })
-                
+
                 processRegistry.set(this.processId, this.process)
-                
+
                 this.transport = new StdioClientTransport({
                     command: finalCommand,
                     args: args || []
                 })
-                
+
                 if (this.process) {
                     this.process.on('error', () => {
                         // Handle process error
                     })
-                    
+
                     this.process.on('exit', () => {
                         processRegistry.delete(this.processId)
                     })
-                    
+
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
                             resolve()
@@ -174,14 +172,14 @@ export class MCPToolkit extends BaseToolkit {
             }
             this.client = null
         }
-        
+
         if (this.process) {
             try {
                 processRegistry.delete(this.processId)
-                        
+
                 if (this.process.exitCode === null) {
                     this.process.kill('SIGTERM')
-                            
+
                     setTimeout(() => {
                         if (this.process && this.process.exitCode === null) {
                             this.process.kill('SIGKILL')
@@ -193,7 +191,7 @@ export class MCPToolkit extends BaseToolkit {
             }
             this.process = null
         }
-        
+
         this.transport = null
         this._tools = null
         this.tools = []
