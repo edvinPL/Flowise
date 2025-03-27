@@ -127,7 +127,11 @@ class Custom_MCP implements INode {
             // --- Debugging Tool Selection ---
             const useAllActionsInput = nodeData.inputs?.useAllActions
             const useAllActions = (useAllActionsInput as boolean) ?? true // Default to true if undefined/null
-            console.log(`MCP Node ${nodeData.id}: Input useAllActions = ${useAllActionsInput} (Type: ${typeof useAllActionsInput}), Resolved useAllActions = ${useAllActions}`)
+            console.log(
+                `MCP Node ${
+                    nodeData.id
+                }: Input useAllActions = ${useAllActionsInput} (Type: ${typeof useAllActionsInput}), Resolved useAllActions = ${useAllActions}`
+            )
             // --- End Debugging ---
 
             // If 'Use All Actions' is checked, return all tools immediately
@@ -167,12 +171,16 @@ class Custom_MCP implements INode {
 
             // If mcpActions array is empty (and useAllActions is false), return no tools
             if (mcpActions.length === 0) {
-                console.warn("MCP Node: 'Use All Actions' is off, but no specific actions were selected or parsed correctly. Returning NO tools.")
+                console.warn(
+                    "MCP Node: 'Use All Actions' is off, but no specific actions were selected or parsed correctly. Returning NO tools."
+                )
                 return [] // Return empty array - no tools available to the agent
             }
 
             // Filter the tools based on the selected action names
-            console.log(`MCP Node ${nodeData.id}: Filtering ${allTools.length} available tools based on selection: [${mcpActions.join(', ')}]`)
+            console.log(
+                `MCP Node ${nodeData.id}: Filtering ${allTools.length} available tools based on selection: [${mcpActions.join(', ')}]`
+            )
             const filteredTools = allTools.filter((tool: Tool) => {
                 const toolName = tool.name
                 const isIncluded = mcpActions.includes(toolName)
