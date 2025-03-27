@@ -239,7 +239,7 @@ async function shutdownGracefully(signal: string) {
         console.error('Unexpected error during MCPToolkit cleanup:', e)
     }
 }
-  
+
 // Register the shutdown listeners only once
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM']
 signals.forEach((signal) => {

@@ -208,11 +208,11 @@ class BraveSearch_MCP implements INode {
     async createAndInitToolkit(nodeData: INodeData, options: ICommonObject): Promise<MCPToolkit> {
         const credentialData = await getCredentialData(nodeData.credential ?? '', options)
         const braveApiKey = getCredentialParam('braveApiKey', credentialData, nodeData)
-        
+
         if (!braveApiKey) {
             throw new Error('Brave API Key is required')
         }
-        
+
         const packagePath = getNodeModulesPackagePath('@modelcontextprotocol/server-brave-search/dist/index.js')
 
         const serverParams = {
@@ -229,7 +229,7 @@ class BraveSearch_MCP implements INode {
         if (!toolkit.tools) {
             throw new Error(`Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
         }
-        
+
         return toolkit
     }
 }
