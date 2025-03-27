@@ -64,7 +64,6 @@ class Custom_MCP implements INode {
                     }
                 ]
             }
-            
             try {
                 const toolset = await this.getTools(nodeData)
                 toolset.sort((a: any, b: any) => a.name.localeCompare(b.name))

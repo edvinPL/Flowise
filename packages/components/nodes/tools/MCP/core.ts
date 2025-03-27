@@ -3,7 +3,6 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BaseToolkit, tool, Tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { ChildProcess } from 'child_process'
 
 export class MCPToolkit extends BaseToolkit {
     tools: Tool[] = []
@@ -90,7 +89,7 @@ export class MCPToolkit extends BaseToolkit {
                 env: processEnv
             })
         } catch (error) {
-            console.error("Error setting up MCP transport:", error)
+            console.error('Error setting up MCP transport:', error)
             this.transport = null // Ensure transport is null if setup fails
             throw error // Re-throw
         }
