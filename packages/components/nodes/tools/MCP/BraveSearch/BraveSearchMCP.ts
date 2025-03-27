@@ -167,7 +167,9 @@ class BraveSearch_MCP implements INode {
             console.log(`Brave Search MCP Node ${nodeData.id}: No instance found in module cache for node ID ${nodeData.id}.`)
         }
         // eslint-disable-next-line no-console
-        console.log(`Brave Search MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`)
+        console.log(
+            `Brave Search MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`
+        )
 
         // Return from cache if valid and matching
         if (isInstanceValid && isHashMatching) {
@@ -183,7 +185,9 @@ class BraveSearch_MCP implements INode {
         // Cleanup old instance if it existed but config changed
         if (isInstanceValid && !isHashMatching) {
             // eslint-disable-next-line no-console
-            console.log(`Brave Search MCP Node ${nodeData.id}: Config changed. Cleaning up old toolkit instance ${cachedInstance.id}. Old hash: ${cachedInstance.configHash}`)
+            console.log(
+                `Brave Search MCP Node ${nodeData.id}: Config changed. Cleaning up old toolkit instance ${cachedInstance.id}. Old hash: ${cachedInstance.configHash}`
+            )
             // Remove from module cache *before* calling cleanup
             runtimeInstances.delete(nodeData.id)
             // Cleanup will handle removing from the global activeToolkits set
@@ -232,7 +236,7 @@ class BraveSearch_MCP implements INode {
                     console.log(`Cleaning up temporary toolkit ${tempToolkit.id} used for listing Brave Search actions.`)
                     await tempToolkit.cleanup()
                 }
-            // Removed delay, cleanup should be relatively quick. Fire and forget.
+                // Removed delay, cleanup should be relatively quick. Fire and forget.
             }, 0)
 
             return tools as Tool[]
