@@ -51,7 +51,7 @@ class Custom_MCP implements INode {
                 type: 'asyncMultiOptions',
                 loadMethod: 'listActions',
                 refresh: true,
-                show: {
+                optional: {
                     'inputs.useAllActions': [false]
                 },
                 description: 'Select which MCP tools to expose to the LLM'
