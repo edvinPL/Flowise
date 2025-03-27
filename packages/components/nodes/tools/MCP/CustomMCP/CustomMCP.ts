@@ -1,6 +1,6 @@
 import { Tool } from '@langchain/core/tools'
 import { INode, INodeData, INodeOptionsValue, INodeParams } from '../../../../src/Interface'
-import { MCPToolkit } from '../core'
+import { MCPToolkit, activeToolkits } from '../core'
 
 const mcpServerConfig = `{
     "command": "${process.platform === 'win32' ? 'npx.cmd' : 'npx'}",
@@ -98,17 +98,19 @@ class Custom_MCP implements INode {
 
     async init(nodeData: INodeData): Promise<any> {
         try {
-            const tools = await this.getTools(nodeData)
+            // Get the cached or newly initialized toolkit instance for runtime
+            const toolkit = await this.getRuntimeToolkit(nodeData)
+            const allTools = toolkit.tools ?? [] // Get all tools from the instance
             const useAllActions = (nodeData.inputs?.useAllActions as boolean) ?? true
 
             // If 'Use All Actions' is checked, return all tools immediately
             if (useAllActions) {
-                return tools
+                return allTools
             }
 
             // --- Logic for when 'Use All Actions' is false ---
             const _mcpActions = nodeData.inputs?.mcpActions
-            let mcpActions = []
+            let mcpActions: string[] = [] // Ensure type is string array
             if (_mcpActions) {
                 try {
                     mcpActions = typeof _mcpActions === 'string' ? JSON.parse(_mcpActions) : _mcpActions
@@ -124,14 +126,95 @@ class Custom_MCP implements INode {
             }
 
             // Filter the tools based on the selected action names
-            return tools.filter((tool: any) => mcpActions.includes(tool.name))
+            return allTools.filter((tool: Tool) => mcpActions.includes(tool.name))
         } catch (error) {
             console.error('Error initializing MCP node:', error)
             throw error
         }
     }
 
-    async getTools(nodeData: INodeData): Promise<Tool[]> {
+    /**
+     * Gets or creates the MCPToolkit instance, caching it on nodeData.instance for runtime use.
+     * Also handles cleanup on config change and registers for shutdown cleanup.
+     */
+    async getRuntimeToolkit(nodeData: INodeData): Promise<MCPToolkit> {
+        // Use a simple hash of the config string for comparison
+        // NOTE: JSON.stringify order isn't guaranteed, a proper hash function would be better
+        const currentConfigString = JSON.stringify(nodeData.inputs?.mcpServerConfig ?? '')
+        const currentConfigHash = currentConfigString // Replace with actual hash if needed
+
+        const cachedInstance = nodeData.instance as MCPToolkit | undefined
+
+        // Check if a valid instance already exists and config hasn't changed
+        if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash === currentConfigHash) {
+            console.log(`Reusing cached MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
+            return cachedInstance
+        }
+
+        // --- Config changed or no instance exists ---
+        // Cleanup old instance if it exists and config has changed
+        if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash !== currentConfigHash) {
+            console.log(`Config changed for MCP node ${nodeData.id}. Cleaning up old toolkit instance ${cachedInstance.id}.`)
+            await cachedInstance.cleanup() // This should remove it from activeToolkits too
+            nodeData.instance = undefined // Clear the instance from nodeData
+        }
+
+        // --- Create and initialize a new one ---
+        console.log(`Creating new MCPToolkit instance for node ${nodeData.id}`)
+        const toolkit = await this.createAndInitToolkit(nodeData)
+        toolkit.configHash = currentConfigHash // Store hash/config on instance for check
+
+        // Cache the initialized instance
+        nodeData.instance = toolkit
+
+        // Add to global registry for shutdown cleanup
+        activeToolkits.add(toolkit)
+        console.log(`MCPToolkit ${toolkit.id} added to active registry.`)
+        console.warn(
+            `MCPToolkit instance ${toolkit.id} created. Process cleanup relies on server shutdown or config change/refresh. Node deletion may orphan processes.`
+        )
+
+        return toolkit
+    }
+
+    /**
+     * Fetches tools by creating a temporary toolkit instance (used for listActions).
+     * Does not cache the instance or add to the global registry.
+     */
+    async fetchToolsFromServer(nodeData: INodeData): Promise<Tool[]> {
+        console.log(`Fetching tools via temporary instance for node ${nodeData.id}`)
+        let tempToolkit: MCPToolkit | undefined = undefined
+        try {
+            tempToolkit = await this.createAndInitToolkit(nodeData)
+            const tools = tempToolkit.tools ?? []
+            // We got the tools. Now, try to clean up the temporary toolkit/process.
+            // Add a small delay maybe, then call cleanup. This is best-effort.
+            setTimeout(async () => {
+                if (tempToolkit) {
+                    console.log(`Cleaning up temporary toolkit ${tempToolkit.id} used for listing actions.`)
+                    // Pass 'true' to indicate it's a temporary cleanup, maybe prevents removal from activeToolkits if needed?
+                    // Let's rely on cleanup always removing from the set for simplicity now.
+                    await tempToolkit.cleanup()
+                }
+            }, 500) // Short delay before cleaning up temporary instance
+            return tools as Tool[]
+        } catch (error) {
+            console.error(`Error fetching tools via temporary instance for node ${nodeData.id}:`, error)
+            // If toolkit creation failed, tempToolkit might be undefined.
+            // If init failed but toolkit exists, cleanup might be needed.
+            if (tempToolkit) {
+                console.log(`Attempting cleanup after error for temporary toolkit ${tempToolkit.id}`)
+                await tempToolkit.cleanup().catch(cleanupError => console.error(`Error during cleanup after error:`, cleanupError));
+            }
+            throw error // Re-throw for listActions error display
+        }
+    }
+
+    /**
+     * Creates and initializes a new MCPToolkit instance based on nodeData config.
+     * Does NOT add to global registry or cache on nodeData.instance itself.
+     */
+    async createAndInitToolkit(nodeData: INodeData): Promise<MCPToolkit> {
         const mcpServerConfig = nodeData.inputs?.mcpServerConfig as string
 
         if (!mcpServerConfig) {
@@ -156,9 +239,15 @@ class Custom_MCP implements INode {
             const toolkit = new MCPToolkit(serverParams, 'stdio')
             await toolkit.initialize()
 
-            const tools = toolkit.tools ?? []
-            return tools as Tool[]
+            // Check if tools are populated after initialization
+            if (!toolkit.tools) {
+                throw new Error(`Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
+            }
+            return toolkit // Return the initialized toolkit instance
         } catch (error) {
+            // Log detailed error during creation/init
+            console.error(`Error creating/initializing MCPToolkit for node ${nodeData.id}:`, error)
+            // Rethrow a more specific error message
             throw new Error(`MCP Server initialization failed: ${error instanceof Error ? error.message : String(error)}`)
         }
     }
