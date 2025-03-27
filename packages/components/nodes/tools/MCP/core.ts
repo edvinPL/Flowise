@@ -123,9 +123,15 @@ export class MCPToolkit extends BaseToolkit {
     }
 
     async cleanup(): Promise<void> {
+        // Don't run cleanup multiple times or during shutdown race conditions
+        if (!activeToolkits.has(this)) {
+            // eslint-disable-next-line no-console
+            console.log(`MCPToolkit ${this.id}: Cleanup already called or instance not active.`)
+            return
+        }
         // eslint-disable-next-line no-console
         console.log(`Cleaning up MCPToolkit ${this.id}`)
-        // Remove from registry FIRST
+        // Remove from registry FIRST to prevent re-entry during shutdown loop
         activeToolkits.delete(this)
 
         // Close client connection if connected
@@ -224,7 +230,7 @@ async function shutdownGracefully(signal: string) {
     const cleanupPromises = []
     for (const toolkit of toolkitsToClean) {
         // eslint-disable-next-line no-console
-        console.log(`Cleaning up toolkit ${toolkit.id}...`)
+        console.log(`Cleaning up toolkit ${toolkit.id} via shutdown hook...`)
         // cleanup() removes the toolkit from the original activeToolkits set
         cleanupPromises.push(toolkit.cleanup())
     }

@@ -2,6 +2,11 @@ import { Tool } from '@langchain/core/tools'
 import { INode, INodeData, INodeOptionsValue, INodeParams } from '../../../../src/Interface'
 import { MCPToolkit, activeToolkits } from '../core'
 
+// --- Module-Level Cache ---
+// Store runtime instances keyed by node ID
+const runtimeInstances = new Map<string, MCPToolkit>()
+// --- End Module-Level Cache ---
+
 const mcpServerConfig = `{
     "command": "${process.platform === 'win32' ? 'npx.cmd' : 'npx'}",
     "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"],
@@ -76,13 +81,15 @@ class Custom_MCP implements INode {
             }
 
             // --- Refresh Button Logic ---
-            // If listActions is called (likely via refresh), cleanup the existing runtime instance.
-            const cachedInstance = nodeData.instance as MCPToolkit | undefined
-            if (cachedInstance && cachedInstance instanceof MCPToolkit) {
+            // Cleanup instance from module cache if refresh is triggered
+            const instanceFromCache = runtimeInstances.get(nodeData.id)
+            if (instanceFromCache) {
                 // eslint-disable-next-line no-console
-                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
-                await cachedInstance.cleanup() // Attempt cleanup
-                nodeData.instance = undefined // Clear the instance from nodeData
+                console.log(`Refresh triggered: Cleaning up cached MCPToolkit instance ${instanceFromCache.id} for node ${nodeData.id}`)
+                // Remove from module cache *before* calling cleanup
+                runtimeInstances.delete(nodeData.id)
+                // Cleanup will handle removing from the global activeToolkits set
+                await instanceFromCache.cleanup()
             }
             // --- End Refresh Button Logic ---
 
@@ -152,76 +159,68 @@ class Custom_MCP implements INode {
      * Also handles cleanup on config change and registers for shutdown cleanup.
      */
     async getRuntimeToolkit(nodeData: INodeData): Promise<MCPToolkit> {
-        // --- Start Detailed Logging ---
-        console.log(`\nMCP Node ${nodeData.id}: --- getRuntimeToolkit called ---`); // Log entry with newline for readability
+        console.log(`\nMCP Node ${nodeData.id}: --- getRuntimeToolkit called ---`)
 
-        const cachedInstance = nodeData.instance as MCPToolkit | undefined;
+        const currentConfigString = JSON.stringify(nodeData.inputs?.mcpServerConfig ?? '')
+        const currentConfigHash = currentConfigString // Replace with actual hash if needed
+        console.log(`MCP Node ${nodeData.id}: Current config representation: ${currentConfigHash}`)
 
-        // Log initial state of nodeData.instance
+        const cachedInstance = runtimeInstances.get(nodeData.id)
+        let isInstanceValid = false
+        let isHashMatching = false
+
         if (cachedInstance) {
-            console.log(`MCP Node ${nodeData.id}: Found item in nodeData.instance. ID: ${cachedInstance.id ?? 'N/A'}`);
-            console.log(`MCP Node ${nodeData.id}: Is it MCPToolkit? ${cachedInstance instanceof MCPToolkit}`);
-            if (cachedInstance instanceof MCPToolkit) {
-                console.log(`MCP Node ${nodeData.id}: Cached configHash: ${cachedInstance.configHash}`);
-            }
+            console.log(`MCP Node ${nodeData.id}: Found instance in module cache. ID: ${cachedInstance.id}`)
+            isInstanceValid = true // Assuming if it's in the cache, it's the right type
+            isHashMatching = cachedInstance.configHash === currentConfigHash
+            console.log(`MCP Node ${nodeData.id}: Cached configHash: ${cachedInstance.configHash}`)
         } else {
-            console.log(`MCP Node ${nodeData.id}: nodeData.instance is initially empty.`);
+            console.log(`MCP Node ${nodeData.id}: No instance found in module cache for this node ID.`)
         }
+        console.log(`MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`)
 
-        // Calculate and log current config representation
-        const currentConfigString = JSON.stringify(nodeData.inputs?.mcpServerConfig ?? '');
-        const currentConfigHash = currentConfigString; // Using string directly for comparison
-        console.log(`MCP Node ${nodeData.id}: Current config representation: ${currentConfigHash}`);
-
-        // Perform and log cache checks
-        const isInstanceValid = cachedInstance && cachedInstance instanceof MCPToolkit;
-        const isHashMatching = isInstanceValid && cachedInstance.configHash === currentConfigHash;
-        console.log(`MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`);
-        // --- End Detailed Logging ---
-
-        // Check cache validity (using the logged checks)
+        // Check if a valid instance already exists and config hasn't changed
         if (isInstanceValid && isHashMatching) {
-            console.log(`MCP Node ${nodeData.id}: Cache HIT. Reusing instance ${cachedInstance.id}`);
-            return cachedInstance;
+            console.log(`MCP Node ${nodeData.id}: Cache HIT. Reusing instance ${cachedInstance.id}`)
+            return cachedInstance
         }
 
         // --- Cache MISS or Config Change ---
-        console.log(`MCP Node ${nodeData.id}: Cache MISS or config changed.`);
+        console.log(`MCP Node ${nodeData.id}: Cache MISS or config changed.`)
 
-        // Cleanup old instance if it exists and config has changed
+        // Cleanup old instance if it existed but config changed
         if (isInstanceValid && !isHashMatching) {
-            console.log(`MCP Node ${nodeData.id}: Config changed. Cleaning up old toolkit instance ${cachedInstance.id}. Old hash: ${cachedInstance.configHash}`);
-            await cachedInstance.cleanup();
-            nodeData.instance = undefined; // Clear the instance from nodeData BEFORE creating new
-        } else if (cachedInstance && !isInstanceValid) {
-             console.warn(`MCP Node ${nodeData.id}: nodeData.instance was not an MCPToolkit. Clearing it.`);
-             nodeData.instance = undefined; // Clear invalid instance
+            console.log(`MCP Node ${nodeData.id}: Config changed. Cleaning up old toolkit instance ${cachedInstance.id}. Old hash: ${cachedInstance.configHash}`)
+            // Remove from module cache *before* calling cleanup
+            runtimeInstances.delete(nodeData.id)
+            // Cleanup will handle removing from the global activeToolkits set
+            await cachedInstance.cleanup()
         }
 
         // --- Create and initialize a new one ---
-        console.log(`MCP Node ${nodeData.id}: Creating NEW MCPToolkit instance...`);
-        let toolkit: MCPToolkit;
+        console.log(`MCP Node ${nodeData.id}: Creating NEW MCPToolkit instance...`)
+        let toolkit: MCPToolkit
         try {
-            toolkit = await this.createAndInitToolkit(nodeData);
-            toolkit.configHash = currentConfigHash; // Store hash/config on instance for check
-            console.log(`MCP Node ${nodeData.id}: NEW Toolkit ${toolkit.id} created and initialized.`);
+            toolkit = await this.createAndInitToolkit(nodeData)
+            toolkit.configHash = currentConfigHash // Store hash/config on instance for check
+            console.log(`MCP Node ${nodeData.id}: NEW Toolkit ${toolkit.id} created and initialized.`)
         } catch (creationError) {
-            console.error(`MCP Node ${nodeData.id}: FATAL error during NEW toolkit creation/initialization:`, creationError);
-            throw creationError; // Rethrow
+            console.error(`MCP Node ${nodeData.id}: FATAL error during NEW toolkit creation/initialization:`, creationError)
+            throw creationError // Rethrow
         }
 
-        // Cache the initialized instance
-        nodeData.instance = toolkit;
-        console.log(`MCP Node ${nodeData.id}: Stored NEW toolkit ${toolkit.id} in nodeData.instance.`);
+        // Cache the initialized instance in the module map
+        runtimeInstances.set(nodeData.id, toolkit)
+        console.log(`MCP Node ${nodeData.id}: Stored NEW toolkit ${toolkit.id} in module cache.`)
 
         // Add to global registry for shutdown cleanup
-        activeToolkits.add(toolkit);
-        console.log(`MCP Node ${nodeData.id}: NEW toolkit ${toolkit.id} added to active registry.`);
+        activeToolkits.add(toolkit)
+        console.log(`MCP Node ${nodeData.id}: NEW toolkit ${toolkit.id} added to active registry.`)
         console.warn(
             `MCP Node ${nodeData.id}: MCPToolkit instance ${toolkit.id} created. Process cleanup relies on server shutdown or config change/refresh. Node deletion may orphan processes.`
-        );
+        )
 
-        return toolkit;
+        return toolkit
     }
 
     /**
@@ -231,21 +230,24 @@ class Custom_MCP implements INode {
     async fetchToolsFromServer(nodeData: INodeData): Promise<Tool[]> {
         // eslint-disable-next-line no-console
         console.log(`Fetching tools via temporary instance for node ${nodeData.id}`)
+        // We MUST ensure temporary instances don't get added to runtimeInstances map
         let tempToolkit: MCPToolkit | undefined = undefined
         try {
+            // createAndInitToolkit doesn't add to caches/registries, safe to call
             tempToolkit = await this.createAndInitToolkit(nodeData)
             const tools = tempToolkit.tools ?? []
-            // We got the tools. Now, try to clean up the temporary toolkit/process.
-            // Add a small delay maybe, then call cleanup. This is best-effort.
+
+            // Best-effort cleanup for the temporary instance. It was never in runtimeInstances.
+            // It *was* added to activeToolkits, so cleanup will remove it from there.
             setTimeout(async () => {
                 if (tempToolkit) {
                     // eslint-disable-next-line no-console
                     console.log(`Cleaning up temporary toolkit ${tempToolkit.id} used for listing actions.`)
-                    // Pass 'true' to indicate it's a temporary cleanup, maybe prevents removal from activeToolkits if needed?
-                    // Let's rely on cleanup always removing from the set for simplicity now.
                     await tempToolkit.cleanup()
                 }
-            }, 500) // Short delay before cleaning up temporary instance
+            // Removed delay, cleanup should be relatively quick. Fire and forget.
+            }, 0)
+
             return tools as Tool[]
         } catch (error) {
             // eslint-disable-next-line no-console
