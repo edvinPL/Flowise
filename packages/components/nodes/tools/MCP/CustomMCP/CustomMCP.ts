@@ -39,11 +39,21 @@ class Custom_MCP implements INode {
                 placeholder: mcpServerConfig
             },
             {
+                label: 'Use All Available Actions',
+                name: 'useAllActions',
+                type: 'boolean',
+                default: true,
+                description: 'Whether to automatically use all actions provided by the MCP server'
+            },
+            {
                 label: 'Available Actions',
                 name: 'mcpActions',
                 type: 'asyncMultiOptions',
                 loadMethod: 'listActions',
                 refresh: true,
+                show: {
+                    'inputs.useAllActions': [false]
+                },
                 description: 'Select which MCP tools to expose to the LLM'
             }
         ]
@@ -89,7 +99,14 @@ class Custom_MCP implements INode {
     async init(nodeData: INodeData): Promise<any> {
         try {
             const tools = await this.getTools(nodeData)
+            const useAllActions = nodeData.inputs?.useAllActions as boolean ?? true
 
+            // If 'Use All Actions' is checked, return all tools immediately
+            if (useAllActions) {
+                return tools
+            }
+
+            // --- Logic for when 'Use All Actions' is false ---
             const _mcpActions = nodeData.inputs?.mcpActions
             let mcpActions = []
             if (_mcpActions) {
@@ -100,6 +117,13 @@ class Custom_MCP implements INode {
                 }
             }
 
+            // If mcpActions array is empty (and useAllActions is false), return no tools
+            if (mcpActions.length === 0) {
+                console.warn("MCP Node: 'Use All Actions' is off, but no specific actions were selected.")
+                return [] // Return empty array - no tools available to the agent
+            }
+
+            // Filter the tools based on the selected action names
             return tools.filter((tool: any) => mcpActions.includes(tool.name))
         } catch (error) {
             console.error('Error initializing MCP node:', error)
