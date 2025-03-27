@@ -1,9 +1,15 @@
-import { CallToolRequest, CallToolResultSchema, ListToolsResult, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequest, ListToolsResult, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BaseToolkit, tool, Tool } from '@langchain/core/tools'
 // Import ZodError for specific error catching
 import { ZodError, z } from 'zod'
+
+// --- Permissive Object Schema ---
+// Use a schema that validates as *any* object, allowing any properties.
+// This should satisfy client.request's type check while allowing flexibility.
+const AnyJsonObjectSchema = z.object({}).passthrough()
+// --- End Permissive Object Schema ---
 
 // --- Shutdown Cleanup ---
 // Export the set so CustomMCP can add to it
@@ -188,34 +194,37 @@ export async function MCPTool({
             let outputString: string // To hold the final result string
 
             try {
-                // Attempt request WITH the official schema validation first
-                const res = await client.request(req, CallToolResultSchema)
+                // Use the permissive object schema; cast result to 'any' for easier property access below
+                const res: any = await client.request(req, AnyJsonObjectSchema)
                 // eslint-disable-next-line no-console
-                console.log(`MCP Tool ${name}: Received response validated against SDK schema:`, res)
-                // If schema validation passed, stringify the content (which should be an array)
-                outputString = JSON.stringify(res.content ?? '') // Handle if content is somehow null/undefined despite schema
-            } catch (error) {
-                // Check if it's a ZodError (schema validation failed)
-                if (error instanceof ZodError) {
-                    // eslint-disable-next-line no-console
-                    console.warn(`MCP Tool ${name}: SDK schema validation failed:`, error.issues)
-                    // Attempt to access the raw input that failed validation (might not always work)
-                    const rawInput = (error as any).input // ZodError sometimes has 'input' property
-                    if (rawInput !== undefined && rawInput !== null) {
-                        // eslint-disable-next-line no-console
-                        console.log(`MCP Tool ${name}: Returning stringified raw input due to schema failure.`)
-                        outputString = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput)
-                    } else {
-                        // eslint-disable-next-line no-console
-                        console.warn(`MCP Tool ${name}: Could not retrieve raw input from ZodError. Returning error message.`)
-                        outputString = `Error: Tool ${name} response validation failed (Schema mismatch).`
-                    }
+                console.log(`MCP Tool ${name}: Received response (validated as any object):`, res)
+
+                // Extract output based on common patterns, prioritizing 'content'
+                // (Using optional chaining ?. on 'res' for safety, though it should be an object if request succeeded)
+                if (res?.content && Array.isArray(res.content) && res.content.length > 0) {
+                    // Standard structure: Use content if it's a non-empty array
+                    outputString = JSON.stringify(res.content)
+                } else if (res?.toolResult !== undefined && res.toolResult !== null) {
+                    // Make server format
+                    outputString = typeof res.toolResult === 'string' ? res.toolResult : JSON.stringify(res.toolResult)
+                } else if (res?.result !== undefined && res.result !== null) {
+                    // Common format
+                    outputString = typeof res.result === 'string' ? res.result : JSON.stringify(res.result)
+                } else if (res?.data !== undefined && res.data !== null) {
+                    // Another common format
+                    outputString = typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
+                } else if (res?.content !== undefined && res.content !== null) {
+                    // Handle case where content exists but might be empty array or non-array (less ideal than non-empty array)
+                    outputString = JSON.stringify(res.content)
                 } else {
-                    // Handle other errors (network, transport, etc.)
-                    // eslint-disable-next-line no-console
-                    console.error(`MCP Tool ${name}: Request failed with non-validation error:`, error)
-                    outputString = `Error: Tool ${name} request failed. Details: ${error?.message ?? 'Unknown error'}`
+                    // Fallback: Stringify the whole response object if no common key is found
+                    outputString = JSON.stringify(res ?? '') // Use empty string if res is null/undefined
                 }
+            } catch (error) {
+                // Handle errors (network, non-JSON response, etc.)
+                // eslint-disable-next-line no-console
+                console.error(`MCP Tool ${name}: Request failed:`, error)
+                outputString = `Error: Tool ${name} request failed. Details: ${error?.message ?? 'Unknown error'}`
             }
 
             // Ensure a non-null/undefined string is always returned
