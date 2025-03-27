@@ -1,4 +1,10 @@
-import { CallToolRequest, CallToolResultSchema, CompatibilityCallToolResultSchema, ListToolsResult, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import {
+    CallToolRequest,
+    CallToolResultSchema,
+    CompatibilityCallToolResultSchema,
+    ListToolsResult,
+    ListToolsResultSchema
+} from '@modelcontextprotocol/sdk/types.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BaseToolkit, tool, Tool } from '@langchain/core/tools'
@@ -216,7 +222,9 @@ export async function MCPTool({
                     console.error(`MCP Tool ${name}: Error 2 (Compat Schema):`, error2)
 
                     // Optionally try to extract from error1.input if it was a ZodError
-                    let fallbackData = `Error: Tool ${name} failed. Standard Schema Error: ${error1?.message ?? 'Unknown'}. Compat Schema Error: ${error2?.message ?? 'Unknown'}`
+                    let fallbackData = `Error: Tool ${name} failed. Standard Schema Error: ${
+                        error1?.message ?? 'Unknown'
+                    }. Compat Schema Error: ${error2?.message ?? 'Unknown'}`
                     if (error1 instanceof ZodError && (error1 as any).input) {
                         try {
                             fallbackData = `Error: Tool ${name} failed validation. Raw Response: ${JSON.stringify((error1 as any).input)}`

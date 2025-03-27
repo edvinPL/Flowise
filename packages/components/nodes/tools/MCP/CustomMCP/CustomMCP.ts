@@ -117,6 +117,7 @@ class Custom_MCP implements INode {
     }
 
     async init(nodeData: INodeData): Promise<any> {
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: init() called`) // Confirm init call frequency
 
         try {
@@ -127,6 +128,7 @@ class Custom_MCP implements INode {
             // --- Debugging Tool Selection ---
             const useAllActionsInput = nodeData.inputs?.useAllActions
             const useAllActions = (useAllActionsInput as boolean) ?? true // Default to true if undefined/null
+            // eslint-disable-next-line no-console
             console.log(
                 `MCP Node ${
                     nodeData.id
@@ -136,16 +138,19 @@ class Custom_MCP implements INode {
 
             // If 'Use All Actions' is checked, return all tools immediately
             if (useAllActions) {
+                // eslint-disable-next-line no-console
                 console.log(`MCP Node ${nodeData.id}: useAllActions is true, returning all ${allTools.length} tools.`)
                 return allTools
             }
 
             // --- Logic for when 'Use All Actions' is false ---
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: useAllActions is false, attempting to filter tools.`)
             const _mcpActions = nodeData.inputs?.mcpActions
             let mcpActions: string[] = [] // Ensure type is string array
 
             // --- Debugging Tool Selection ---
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Raw mcpActions input = ${JSON.stringify(_mcpActions)} (Type: ${typeof _mcpActions})`)
             // --- End Debugging ---
 
@@ -156,21 +161,25 @@ class Custom_MCP implements INode {
                     if (Array.isArray(parsedActions)) {
                         mcpActions = parsedActions // Assign if it's an array
                     } else {
+                        // eslint-disable-next-line no-console
                         console.warn('MCP actions input was not an array after parsing:', parsedActions)
                         mcpActions = [] // Ensure it's empty if parsing fails or type is wrong
                     }
                 } catch (error) {
+                    // eslint-disable-next-line no-console
                     console.error('Error parsing MCP actions:', error)
                     mcpActions = [] // Ensure it's empty on error
                 }
             }
 
             // --- Debugging Tool Selection ---
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Parsed mcpActions array = [${mcpActions.join(', ')}]`)
             // --- End Debugging ---
 
             // If mcpActions array is empty (and useAllActions is false), return no tools
             if (mcpActions.length === 0) {
+                // eslint-disable-next-line no-console
                 console.warn(
                     "MCP Node: 'Use All Actions' is off, but no specific actions were selected or parsed correctly. Returning NO tools."
                 )
@@ -178,6 +187,7 @@ class Custom_MCP implements INode {
             }
 
             // Filter the tools based on the selected action names
+            // eslint-disable-next-line no-console
             console.log(
                 `MCP Node ${nodeData.id}: Filtering ${allTools.length} available tools based on selection: [${mcpActions.join(', ')}]`
             )
@@ -187,9 +197,11 @@ class Custom_MCP implements INode {
                 // console.log(`MCP Node ${nodeData.id}: Checking tool '${toolName}' -> Included: ${isIncluded}`) // Uncomment for very verbose logging
                 return isIncluded
             })
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Found ${filteredTools.length} matching tools.`)
             return filteredTools
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error(`Error initializing MCP node ${nodeData.id}:`, error)
             throw error
         }
@@ -200,6 +212,7 @@ class Custom_MCP implements INode {
      * Also handles cleanup on config change and registers for shutdown cleanup.
      */
     async getRuntimeToolkit(nodeData: INodeData): Promise<MCPToolkit> {
+        // eslint-disable-next-line no-console
         console.log(`\nMCP Node ${nodeData.id}: --- getRuntimeToolkit called ---`)
 
         // Check module cache `runtimeInstances` instead of `nodeData.instance`
@@ -207,35 +220,43 @@ class Custom_MCP implements INode {
 
         // Log cache status
         if (cachedInstance) {
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Found instance in module cache. ID: ${cachedInstance.id}`)
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Cached configHash: ${cachedInstance.configHash}`)
         } else {
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: No instance found in module cache for node ID ${nodeData.id}.`)
         }
 
         // Calculate current config hash/string
         const currentConfigString = JSON.stringify(nodeData.inputs?.mcpServerConfig ?? '')
         const currentConfigHash = currentConfigString // Replace with actual hash if needed
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: Current config representation: ${currentConfigHash}`)
 
         // Perform cache checks
         const isInstanceValid = !!cachedInstance // Instance exists in map
         const isHashMatching = isInstanceValid && cachedInstance.configHash === currentConfigHash
+        // eslint-disable-next-line no-console
         console.log(
             `MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`
         )
 
         // Return from cache if valid and matching
         if (isInstanceValid && isHashMatching) {
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Cache HIT. Reusing instance ${cachedInstance.id} from module cache.`)
             return cachedInstance
         }
 
         // --- Cache MISS or Config Change ---
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: Cache MISS or config changed.`)
 
         // Cleanup old instance if it existed but config changed
         if (isInstanceValid && !isHashMatching) {
+            // eslint-disable-next-line no-console
             console.log(
                 `MCP Node ${nodeData.id}: Config changed. Cleaning up old toolkit instance ${cachedInstance.id}. Old hash: ${cachedInstance.configHash}`
             )
@@ -246,24 +267,30 @@ class Custom_MCP implements INode {
         }
 
         // --- Create and initialize a new one ---
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: Creating NEW MCPToolkit instance...`)
         let toolkit: MCPToolkit
         try {
             toolkit = await this.createAndInitToolkit(nodeData)
             toolkit.configHash = currentConfigHash // Store hash/config on instance for check
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: NEW Toolkit ${toolkit.id} created and initialized.`)
         } catch (creationError) {
+            // eslint-disable-next-line no-console
             console.error(`MCP Node ${nodeData.id}: FATAL error during NEW toolkit creation/initialization:`, creationError)
             throw creationError // Rethrow
         }
 
         // Cache the initialized instance in the module map
         runtimeInstances.set(nodeData.id, toolkit) // Use module map here
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: Stored NEW toolkit ${toolkit.id} in module cache.`) // Corrected log
 
         // Add to global registry for shutdown cleanup
         activeToolkits.add(toolkit)
+        // eslint-disable-next-line no-console
         console.log(`MCP Node ${nodeData.id}: NEW toolkit ${toolkit.id} added to active registry.`)
+        // eslint-disable-next-line no-console
         console.warn(
             `MCP Node ${nodeData.id}: MCPToolkit instance ${toolkit.id} created. Process cleanup relies on server shutdown or config change/refresh. Node deletion may orphan processes.`
         )
@@ -348,12 +375,15 @@ class Custom_MCP implements INode {
 
             // Create and initialize the toolkit
             const toolkit = new MCPToolkit(serverParams, 'stdio')
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Initializing toolkit ${toolkit.id}...`)
             await toolkit.initialize()
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} initialized.`)
 
             // Check if tools are populated after initialization
             if (!toolkit.tools) {
+                // eslint-disable-next-line no-console
                 console.error(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
                 throw new Error(`Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
             }
@@ -361,11 +391,13 @@ class Custom_MCP implements INode {
             // Add to activeToolkits registry immediately after successful init
             // This ensures it's tracked for shutdown, even if temporary
             activeToolkits.add(toolkit)
+            // eslint-disable-next-line no-console
             console.log(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} added to active registry during creation.`)
 
             return toolkit // Return the initialized toolkit instance
         } catch (error) {
             // Log detailed error during creation/init
+            // eslint-disable-next-line no-console
             console.error(`Error creating/initializing MCPToolkit for node ${nodeData.id}:`, error)
             // Rethrow a more specific error message
             throw new Error(`MCP Server initialization failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -379,12 +411,14 @@ class Custom_MCP implements INode {
             return inputString
         } catch (e) {
             // If that fails, try to evaluate as a JavaScript object
+            // eslint-disable-next-line no-console
             console.warn(`Direct JSON parse failed for MCP config, attempting JS object evaluation... Error: ${e.message}`)
             try {
                 // Be cautious with Function constructor for security if config source is untrusted
                 const jsObject = Function('"use strict"; return (' + inputString + ')')()
                 return JSON.stringify(jsObject, null, 2)
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('Error converting MCP config string to JSON:', error)
                 throw new Error('Invalid MCP Server Config format - not valid JSON or JavaScript object literal.')
             }
