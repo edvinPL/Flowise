@@ -123,6 +123,7 @@ export class MCPToolkit extends BaseToolkit {
     }
 
     async cleanup(): Promise<void> {
+        // eslint-disable-next-line no-console
         console.log(`Cleaning up MCPToolkit ${this.id}`)
         // Remove from registry FIRST
         activeToolkits.delete(this)
@@ -138,11 +139,13 @@ export class MCPToolkit extends BaseToolkit {
                     if (typeof (this.transport as any).destroy === 'function') {
                         try {
                             ;(this.transport as any).destroy()
+                            // eslint-disable-next-line no-console
                             console.log(`MCPToolkit ${this.id}: Transport destroyed.`)
                         } catch (transportErr) {
                             console.error(`MCPToolkit ${this.id}: Error destroying transport:`, transportErr)
                         }
                     } else {
+                        // eslint-disable-next-line no-console
                         console.warn(`MCPToolkit ${this.id}: Transport has no 'destroy' method. Process might be orphaned.`)
                     }
                     this.transport = null
@@ -156,6 +159,7 @@ export class MCPToolkit extends BaseToolkit {
         this.transport = null
         this._tools = null
         this.tools = []
+        // eslint-disable-next-line no-console
         console.log(`Cleanup finished for MCPToolkit ${this.id}`)
     }
 }
@@ -208,28 +212,30 @@ async function shutdownGracefully(signal: string) {
     // Ensure this runs only once
     if (shuttingDown) return
     shuttingDown = true
+    // eslint-disable-next-line no-console
     console.log(`Received ${signal}. Attempting graceful shutdown for ${activeToolkits.size} MCPToolkit(s)...`)
-  
     // Create a copy of the set to iterate over safely, as cleanup modifies the set
     const toolkitsToClean = new Set(activeToolkits)
     if (toolkitsToClean.size === 0) {
+        // eslint-disable-next-line no-console
         console.log('No active MCPToolkits found to clean up.')
         return
     }
-  
     const cleanupPromises = []
     for (const toolkit of toolkitsToClean) {
+        // eslint-disable-next-line no-console
         console.log(`Cleaning up toolkit ${toolkit.id}...`)
         // cleanup() removes the toolkit from the original activeToolkits set
         cleanupPromises.push(toolkit.cleanup())
     }
-  
     try {
         // Wait for all cleanup attempts to settle
         await Promise.allSettled(cleanupPromises)
+        // eslint-disable-next-line no-console
         console.log('Finished MCPToolkit cleanup attempts.')
     } catch (e) {
         // Should not happen with allSettled, but log just in case
+        // eslint-disable-next-line no-console
         console.error('Unexpected error during MCPToolkit cleanup:', e)
     }
 }

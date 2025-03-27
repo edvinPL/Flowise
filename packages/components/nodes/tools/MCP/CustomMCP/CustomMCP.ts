@@ -77,11 +77,12 @@ class Custom_MCP implements INode {
 
             // --- Refresh Button Logic ---
             // If listActions is called (likely via refresh), cleanup the existing runtime instance.
-            const cachedInstance = nodeData.instance as MCPToolkit | undefined;
+            const cachedInstance = nodeData.instance as MCPToolkit | undefined
             if (cachedInstance && cachedInstance instanceof MCPToolkit) {
-                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`);
-                await cachedInstance.cleanup(); // Attempt cleanup
-                nodeData.instance = undefined; // Clear the instance from nodeData
+                // eslint-disable-next-line no-console
+                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
+                await cachedInstance.cleanup() // Attempt cleanup
+                nodeData.instance = undefined // Clear the instance from nodeData
             }
             // --- End Refresh Button Logic ---
 
@@ -159,6 +160,7 @@ class Custom_MCP implements INode {
 
         // Check if a valid instance already exists and config hasn't changed
         if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash === currentConfigHash) {
+            // eslint-disable-next-line no-console
             console.log(`Reusing cached MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
             return cachedInstance
         }
@@ -166,12 +168,14 @@ class Custom_MCP implements INode {
         // --- Config changed or no instance exists ---
         // Cleanup old instance if it exists and config has changed
         if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash !== currentConfigHash) {
+            // eslint-disable-next-line no-console
             console.log(`Config changed for MCP node ${nodeData.id}. Cleaning up old toolkit instance ${cachedInstance.id}.`)
             await cachedInstance.cleanup() // This should remove it from activeToolkits too
             nodeData.instance = undefined // Clear the instance from nodeData
         }
 
         // --- Create and initialize a new one ---
+        // eslint-disable-next-line no-console
         console.log(`Creating new MCPToolkit instance for node ${nodeData.id}`)
         const toolkit = await this.createAndInitToolkit(nodeData)
         toolkit.configHash = currentConfigHash // Store hash/config on instance for check
@@ -181,7 +185,9 @@ class Custom_MCP implements INode {
 
         // Add to global registry for shutdown cleanup
         activeToolkits.add(toolkit)
+        // eslint-disable-next-line no-console
         console.log(`MCPToolkit ${toolkit.id} added to active registry.`)
+        // eslint-disable-next-line no-console
         console.warn(
             `MCPToolkit instance ${toolkit.id} created. Process cleanup relies on server shutdown or config change/refresh. Node deletion may orphan processes.`
         )
@@ -194,6 +200,7 @@ class Custom_MCP implements INode {
      * Does not cache the instance or add to the global registry.
      */
     async fetchToolsFromServer(nodeData: INodeData): Promise<Tool[]> {
+        // eslint-disable-next-line no-console
         console.log(`Fetching tools via temporary instance for node ${nodeData.id}`)
         let tempToolkit: MCPToolkit | undefined = undefined
         try {
@@ -203,6 +210,7 @@ class Custom_MCP implements INode {
             // Add a small delay maybe, then call cleanup. This is best-effort.
             setTimeout(async () => {
                 if (tempToolkit) {
+                    // eslint-disable-next-line no-console
                     console.log(`Cleaning up temporary toolkit ${tempToolkit.id} used for listing actions.`)
                     // Pass 'true' to indicate it's a temporary cleanup, maybe prevents removal from activeToolkits if needed?
                     // Let's rely on cleanup always removing from the set for simplicity now.
@@ -211,12 +219,14 @@ class Custom_MCP implements INode {
             }, 500) // Short delay before cleaning up temporary instance
             return tools as Tool[]
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error(`Error fetching tools via temporary instance for node ${nodeData.id}:`, error)
             // If toolkit creation failed, tempToolkit might be undefined.
             // If init failed but toolkit exists, cleanup might be needed.
             if (tempToolkit) {
+                // eslint-disable-next-line no-console
                 console.log(`Attempting cleanup after error for temporary toolkit ${tempToolkit.id}`)
-                await tempToolkit.cleanup().catch(cleanupError => console.error(`Error during cleanup after error:`, cleanupError));
+                await tempToolkit.cleanup().catch((cleanupError) => console.error(`Error during cleanup after error:`, cleanupError))
             }
             throw error // Re-throw for listActions error display
         }

@@ -59,11 +59,12 @@ class BraveSearch_MCP implements INode {
         listActions: async (nodeData: INodeData, options: ICommonObject): Promise<INodeOptionsValue[]> => {
             // --- Refresh Button Logic ---
             // If listActions is called (likely via refresh), cleanup the existing runtime instance.
-            const cachedInstance = nodeData.instance as MCPToolkit | undefined;
+            const cachedInstance = nodeData.instance as MCPToolkit | undefined
             if (cachedInstance && cachedInstance instanceof MCPToolkit) {
-                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`);
-                await cachedInstance.cleanup(); // Attempt cleanup
-                nodeData.instance = undefined; // Clear the instance from nodeData
+                // eslint-disable-next-line no-console
+                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
+                await cachedInstance.cleanup() // Attempt cleanup
+                nodeData.instance = undefined // Clear the instance from nodeData
             }
             // --- End Refresh Button Logic ---
 
@@ -139,6 +140,7 @@ class BraveSearch_MCP implements INode {
 
         // Check if a valid instance already exists and config hasn't changed
         if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash === currentConfigHash) {
+            // eslint-disable-next-line no-console
             console.log(`Reusing cached Brave Search MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`)
             return cachedInstance
         }
@@ -146,12 +148,14 @@ class BraveSearch_MCP implements INode {
         // --- Config changed or no instance exists ---
         // Cleanup old instance if it exists and config has changed
         if (cachedInstance && cachedInstance instanceof MCPToolkit && cachedInstance.configHash !== currentConfigHash) {
+            // eslint-disable-next-line no-console
             console.log(`Config changed for Brave Search MCP node ${nodeData.id}. Cleaning up old toolkit instance ${cachedInstance.id}.`)
             await cachedInstance.cleanup() // This should remove it from activeToolkits too
             nodeData.instance = undefined // Clear the instance from nodeData
         }
 
         // --- Create and initialize a new one ---
+        // eslint-disable-next-line no-console
         console.log(`Creating new Brave Search MCPToolkit instance for node ${nodeData.id}`)
         const toolkit = await this.createAndInitToolkit(nodeData, options)
         toolkit.configHash = currentConfigHash // Store hash/config on instance for check
@@ -161,6 +165,7 @@ class BraveSearch_MCP implements INode {
 
         // Add to global registry for shutdown cleanup
         activeToolkits.add(toolkit)
+        // eslint-disable-next-line no-console
         console.log(`Brave Search MCPToolkit ${toolkit.id} added to active registry.`)
 
         return toolkit
@@ -170,6 +175,7 @@ class BraveSearch_MCP implements INode {
      * Fetches tools by creating a temporary toolkit instance (used for listActions).
      */
     async fetchToolsFromServer(nodeData: INodeData, options: ICommonObject): Promise<Tool[]> {
+        // eslint-disable-next-line no-console
         console.log(`Fetching tools via temporary instance for Brave Search node ${nodeData.id}`)
         let tempToolkit: MCPToolkit | undefined = undefined
         try {
@@ -178,16 +184,19 @@ class BraveSearch_MCP implements INode {
             // We got the tools. Now, try to clean up the temporary toolkit/process.
             setTimeout(async () => {
                 if (tempToolkit) {
+                    // eslint-disable-next-line no-console
                     console.log(`Cleaning up temporary toolkit ${tempToolkit.id} used for listing Brave Search actions.`)
                     await tempToolkit.cleanup()
                 }
             }, 500) // Short delay before cleaning up temporary instance
             return tools as Tool[]
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error(`Error fetching tools for Brave Search node ${nodeData.id}:`, error)
             if (tempToolkit) {
+                // eslint-disable-next-line no-console
                 console.log(`Attempting cleanup after error for temporary toolkit ${tempToolkit.id}`)
-                await tempToolkit.cleanup().catch(cleanupError => console.error(`Error during cleanup after error:`, cleanupError));
+                await tempToolkit.cleanup().catch((cleanupError) => console.error(`Error during cleanup after error:`, cleanupError))
             }
             throw error
         }
