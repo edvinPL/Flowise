@@ -95,7 +95,6 @@ export class MCPToolkit extends BaseToolkit {
         }
     }
 
-
     async get_tools(): Promise<Tool[]> {
         if (this._tools === null || this.client === null) {
             throw new Error('Must initialize the toolkit first')
