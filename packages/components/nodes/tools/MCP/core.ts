@@ -202,7 +202,8 @@ export async function MCPTool({
 
             try {
                 // Use the flexible schema for the request
-                const res = await client.request(req, FlexibleResultSchema)
+                // Cast response to 'any' after flexible validation to bypass strict property checks
+                const res: any = await client.request(req, FlexibleResultSchema)
                 // eslint-disable-next-line no-console
                 console.log(`MCP Tool ${name}: Received response (validated flexibly):`, res)
 
