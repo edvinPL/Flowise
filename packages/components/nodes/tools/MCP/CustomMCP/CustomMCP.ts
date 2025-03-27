@@ -99,7 +99,7 @@ class Custom_MCP implements INode {
     async init(nodeData: INodeData): Promise<any> {
         try {
             const tools = await this.getTools(nodeData)
-            const useAllActions = nodeData.inputs?.useAllActions as boolean ?? true
+            const useAllActions = (nodeData.inputs?.useAllActions as boolean) ?? true
 
             // If 'Use All Actions' is checked, return all tools immediately
             if (useAllActions) {
