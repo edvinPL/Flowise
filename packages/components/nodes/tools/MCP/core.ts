@@ -184,10 +184,38 @@ export async function MCPTool({
     return tool(
         async (input): Promise<string> => {
             const req: CallToolRequest = { method: 'tools/call', params: { name: name, arguments: input } }
-            const res = await client.request(req, CallToolResultSchema)
-            const content = res.content
-            const contentString = JSON.stringify(content)
-            return contentString
+            try {
+                // Attempt request WITH schema validation first
+                // This might throw a Zod error if the response shape is wrong
+                const res = await client.request(req, CallToolResultSchema)
+
+                // If successful and content exists according to schema, stringify it
+                const content = res.content // `content` should exist if schema passed
+                // eslint-disable-next-line no-console
+                console.log(`MCP Tool ${name}: Received validated content:`, content)
+                // Ensure we return a string; stringify content or empty string if content is null/undefined
+                return JSON.stringify(content ?? '')
+            } catch (validationError) {
+                // Log the schema validation failure or other request error
+                // eslint-disable-next-line no-console
+                console.warn(`MCP Tool ${name}: Initial request with schema failed:`, validationError)
+
+                // Fallback: Try the same request WITHOUT schema validation to get raw data
+                try {
+                    const rawRes: any = await client.request(req) // No schema provided here
+                    // eslint-disable-next-line no-console
+                    console.log(`MCP Tool ${name}: Received raw response on fallback:`, rawRes)
+                    // Return the entire raw response stringified.
+                    // Alternatively, check for common properties like rawRes.result if needed.
+                    return JSON.stringify(rawRes ?? '') // Stringify raw response or empty string
+                } catch (rawRequestError) {
+                    // If even the raw request fails, log and return an error string
+                    // eslint-disable-next-line no-console
+                    console.error(`MCP Tool ${name}: Error during raw request fallback:`, rawRequestError)
+                    // Provide error info back to the agent/LLM
+                    return `Error executing tool ${name}: ${validationError?.message ?? rawRequestError?.message ?? 'Unknown error'}`
+                }
+            }
         },
         {
             name: name,
