@@ -161,27 +161,30 @@ class Custom_MCP implements INode {
     async getRuntimeToolkit(nodeData: INodeData): Promise<MCPToolkit> {
         console.log(`\nMCP Node ${nodeData.id}: --- getRuntimeToolkit called ---`)
 
+        // Check module cache `runtimeInstances` instead of `nodeData.instance`
+        const cachedInstance = runtimeInstances.get(nodeData.id)
+
+        // Log cache status
+        if (cachedInstance) {
+            console.log(`MCP Node ${nodeData.id}: Found instance in module cache. ID: ${cachedInstance.id}`)
+            console.log(`MCP Node ${nodeData.id}: Cached configHash: ${cachedInstance.configHash}`)
+        } else {
+            console.log(`MCP Node ${nodeData.id}: No instance found in module cache for node ID ${nodeData.id}.`)
+        }
+
+        // Calculate current config hash/string
         const currentConfigString = JSON.stringify(nodeData.inputs?.mcpServerConfig ?? '')
         const currentConfigHash = currentConfigString // Replace with actual hash if needed
         console.log(`MCP Node ${nodeData.id}: Current config representation: ${currentConfigHash}`)
 
-        const cachedInstance = runtimeInstances.get(nodeData.id)
-        let isInstanceValid = false
-        let isHashMatching = false
-
-        if (cachedInstance) {
-            console.log(`MCP Node ${nodeData.id}: Found instance in module cache. ID: ${cachedInstance.id}`)
-            isInstanceValid = true // Assuming if it's in the cache, it's the right type
-            isHashMatching = cachedInstance.configHash === currentConfigHash
-            console.log(`MCP Node ${nodeData.id}: Cached configHash: ${cachedInstance.configHash}`)
-        } else {
-            console.log(`MCP Node ${nodeData.id}: No instance found in module cache for this node ID.`)
-        }
+        // Perform cache checks
+        const isInstanceValid = !!cachedInstance // Instance exists in map
+        const isHashMatching = isInstanceValid && cachedInstance.configHash === currentConfigHash
         console.log(`MCP Node ${nodeData.id}: Cache Check Results: isInstanceValid = ${isInstanceValid}, isHashMatching = ${isHashMatching}`)
 
-        // Check if a valid instance already exists and config hasn't changed
+        // Return from cache if valid and matching
         if (isInstanceValid && isHashMatching) {
-            console.log(`MCP Node ${nodeData.id}: Cache HIT. Reusing instance ${cachedInstance.id}`)
+            console.log(`MCP Node ${nodeData.id}: Cache HIT. Reusing instance ${cachedInstance.id} from module cache.`)
             return cachedInstance
         }
 
@@ -210,8 +213,8 @@ class Custom_MCP implements INode {
         }
 
         // Cache the initialized instance in the module map
-        runtimeInstances.set(nodeData.id, toolkit)
-        console.log(`MCP Node ${nodeData.id}: Stored NEW toolkit ${toolkit.id} in module cache.`)
+        runtimeInstances.set(nodeData.id, toolkit) // Use module map here
+        console.log(`MCP Node ${nodeData.id}: Stored NEW toolkit ${toolkit.id} in module cache.`) // Corrected log
 
         // Add to global registry for shutdown cleanup
         activeToolkits.add(toolkit)
@@ -275,27 +278,46 @@ class Custom_MCP implements INode {
         }
 
         try {
-            let serverParams
+            let serverParams: any
+            // Ensure parsing happens correctly
             if (typeof mcpServerConfig === 'object') {
+                // Should ideally not happen if input type is 'code', but handle just in case
                 serverParams = mcpServerConfig
             } else if (typeof mcpServerConfig === 'string') {
-                const serverParamsString = this.convertToValidJSONString(mcpServerConfig)
-                serverParams = JSON.parse(serverParamsString)
+                try {
+                    const serverParamsString = this.convertToValidJSONString(mcpServerConfig)
+                    serverParams = JSON.parse(serverParamsString)
+                } catch (parseError) {
+                    console.error(`MCP Node ${nodeData.id}: Failed to parse MCP Server Config JSON:`, parseError)
+                    throw new Error(`Invalid MCP Server Config JSON format: ${parseError.message}`)
+                }
+            } else {
+                throw new Error('MCP Server Config has unexpected type.')
             }
 
             // Validate required parameters
-            if (!serverParams.command) {
-                throw new Error('MCP Server Config must include a "command" property')
+            if (!serverParams || typeof serverParams !== 'object' || !serverParams.command) {
+                console.error(`MCP Node ${nodeData.id}: Invalid serverParams structure after parsing`, serverParams)
+                throw new Error('MCP Server Config must include a "command" property and be a valid object.')
             }
 
             // Create and initialize the toolkit
             const toolkit = new MCPToolkit(serverParams, 'stdio')
+            console.log(`MCP Node ${nodeData.id}: Initializing toolkit ${toolkit.id}...`)
             await toolkit.initialize()
+            console.log(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} initialized.`)
 
             // Check if tools are populated after initialization
             if (!toolkit.tools) {
+                console.error(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
                 throw new Error(`Toolkit ${toolkit.id} initialization succeeded but tools list is empty.`)
             }
+
+            // Add to activeToolkits registry immediately after successful init
+            // This ensures it's tracked for shutdown, even if temporary
+            activeToolkits.add(toolkit);
+            console.log(`MCP Node ${nodeData.id}: Toolkit ${toolkit.id} added to active registry during creation.`);
+
             return toolkit // Return the initialized toolkit instance
         } catch (error) {
             // Log detailed error during creation/init
@@ -312,12 +334,14 @@ class Custom_MCP implements INode {
             return inputString
         } catch (e) {
             // If that fails, try to evaluate as a JavaScript object
+            console.warn(`Direct JSON parse failed for MCP config, attempting JS object evaluation... Error: ${e.message}`)
             try {
-                const jsObject = Function('return ' + inputString)()
+                // Be cautious with Function constructor for security if config source is untrusted
+                const jsObject = Function('"use strict"; return (' + inputString + ')')()
                 return JSON.stringify(jsObject, null, 2)
             } catch (error) {
-                console.error('Error converting to JSON:', error)
-                throw new Error('Invalid MCP Server Config format')
+                console.error('Error converting MCP config string to JSON:', error)
+                throw new Error('Invalid MCP Server Config format - not valid JSON or JavaScript object literal.')
             }
         }
     }
