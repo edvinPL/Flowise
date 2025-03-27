@@ -52,7 +52,7 @@ class Custom_MCP implements INode {
                 loadMethod: 'listActions',
                 refresh: true,
                 optional: {
-                    'inputs.useAllActions': [false]
+                    'inputs.useAllActions': ['false']
                 },
                 description: 'Select which MCP tools to expose to the LLM'
             }
