@@ -74,8 +74,20 @@ class Custom_MCP implements INode {
                     }
                 ]
             }
+
+            // --- Refresh Button Logic ---
+            // If listActions is called (likely via refresh), cleanup the existing runtime instance.
+            const cachedInstance = nodeData.instance as MCPToolkit | undefined;
+            if (cachedInstance && cachedInstance instanceof MCPToolkit) {
+                console.log(`Refresh triggered: Cleaning up existing MCPToolkit instance ${cachedInstance.id} for node ${nodeData.id}`);
+                await cachedInstance.cleanup(); // Attempt cleanup
+                nodeData.instance = undefined; // Clear the instance from nodeData
+            }
+            // --- End Refresh Button Logic ---
+
             try {
-                const toolset = await this.getTools(nodeData)
+                // Use the method that creates a temporary instance for listing
+                const toolset = await this.fetchToolsFromServer(nodeData)
                 toolset.sort((a: any, b: any) => a.name.localeCompare(b.name))
 
                 return toolset.map(({ name, ...rest }) => ({
