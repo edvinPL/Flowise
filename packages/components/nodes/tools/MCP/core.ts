@@ -3,142 +3,99 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BaseToolkit, tool, Tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { spawn, ChildProcess } from 'child_process'
-
-// Map to track all processes across instances
-const processRegistry = new Map<string, ChildProcess>()
-
-// Add process termination handler
-process.on('exit', () => {
-    // Terminate all child processes when the main process exits
-    for (const childProcess of processRegistry.values()) {
-        try {
-            if (childProcess.exitCode === null) {
-                childProcess.kill('SIGTERM')
-            }
-        } catch (error) {
-            console.error('Error terminating child process:', error)
-        }
-    }
-})
+import { ChildProcess } from 'child_process'
 
 export class MCPToolkit extends BaseToolkit {
     tools: Tool[] = []
     _tools: ListToolsResult | null = null
-    model_config: any
+    server_config: any
     transport: StdioClientTransport | null = null
     client: Client | null = null
-    process: ChildProcess | null = null
-    processId: string
 
     constructor(serverParams: any, transportType: 'stdio' | 'sse') {
         super()
         this.transport = null
-        this.process = null
-        this.processId = `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 
         if (transportType === 'stdio') {
             // Store server params for initialization
-            this.model_config = serverParams
+            this.server_config = serverParams
         } else {
             // TODO: SSE transport
         }
     }
 
     async initialize() {
-        if (this._tools === null) {
-            try {
-                // Create client
-                this.client = new Client(
-                    {
-                        name: 'flowise-client',
-                        version: '1.0.0'
-                    },
-                    {
-                        capabilities: {}
-                    }
-                )
+        if (this.client !== null && this._tools !== null) {
+            // Already initialized
+            return
+        }
 
-                if (this.transport === null && this.model_config) {
-                    // Spawn the server process
-                    await this._spawnProcess(this.model_config)
-
-                    // Connect client to transport
-                    if (this.transport) {
-                        await this.client.connect(this.transport)
-
-                        // List available tools
-                        this._tools = await this.client.request({ method: 'tools/list' }, ListToolsResultSchema)
-                        this.tools = await this.get_tools()
-                    } else {
-                        throw new Error('Failed to initialize transport after spawning process')
-                    }
-                } else {
-                    throw new Error('Transport is not initialized or model config is missing')
+        try {
+            // Create client
+            this.client = new Client(
+                {
+                    name: 'flowise-client',
+                    version: '1.0.0'
+                },
+                {
+                    capabilities: {}
                 }
-            } catch (error) {
-                // Ensure we clean up process if initialization fails
-                await this.cleanup()
-                throw error
+            )
+
+            // Setup transport configuration from server_config
+            this.setupTransport(this.server_config)
+
+            if (this.transport) {
+                // Connect client to transport (this will likely spawn the process)
+                await this.client.connect(this.transport)
+
+                // List available tools
+                this._tools = await this.client.request({ method: 'tools/list' }, ListToolsResultSchema)
+                this.tools = await this.get_tools()
+            } else {
+                throw new Error('Failed to initialize transport')
             }
+        } catch (error) {
+            console.error('MCP Initialization Error:', error)
+            // Ensure we clean up partially initialized state
+            await this.cleanup()
+            // Re-throw the error to propagate it
+            throw error
         }
     }
 
-    private async _spawnProcess(config: any): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                const { command, args, env } = config
+    // New method to configure the transport
+    private setupTransport(config: any): void {
+        try {
+            const { command, args, env } = config
 
-                if (!command) {
-                    reject(new Error('Server command is required'))
-                    return
-                }
-
-                // Merge process.env with custom env variables
-                const processEnv = { ...process.env, ...(env || {}) }
-
-                let finalCommand = command
-                if (command === 'npx' && process.platform === 'win32') {
-                    finalCommand = 'npx.cmd'
-                }
-
-                this.process = spawn(finalCommand, args || [], {
-                    env: processEnv,
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    shell: true
-                })
-
-                processRegistry.set(this.processId, this.process)
-
-                this.transport = new StdioClientTransport({
-                    command: finalCommand,
-                    args: args || []
-                })
-
-                if (this.process) {
-                    this.process.on('error', () => {
-                        // Handle process error
-                    })
-
-                    this.process.on('exit', () => {
-                        processRegistry.delete(this.processId)
-                    })
-
-                    setTimeout(() => {
-                        if (this.process && this.process.exitCode === null) {
-                            resolve()
-                        } else {
-                            reject(new Error('MCP server process failed to start or exited too quickly'))
-                        }
-                    }, 2000)
-                } else {
-                    reject(new Error('Failed to spawn process'))
-                }
-            } catch (error) {
-                reject(error)
+            if (!command) {
+                throw new Error('Server command is required in MCP config')
             }
-        })
+
+            // Merge process.env with custom env variables
+            const processEnv = { ...process.env, ...(env || {}) }
+
+            // Handle npx on Windows
+            let finalCommand = command
+            if (command === 'npx' && process.platform === 'win32') {
+                finalCommand = 'npx.cmd'
+            }
+
+            // Create the transport, passing command, args, and the merged env
+            this.transport = new StdioClientTransport({
+                command: finalCommand,
+                args: args || [],
+                // Pass the merged environment variables here
+                env: processEnv
+            })
+        } catch (error) {
+            console.error("Error setting up MCP transport:", error)
+            this.transport = null // Ensure transport is null if setup fails
+            throw error // Re-throw
+        }
     }
+
 
     async get_tools(): Promise<Tool[]> {
         if (this._tools === null || this.client === null) {
@@ -165,31 +122,16 @@ export class MCPToolkit extends BaseToolkit {
                 // Using the connect method in the reverse way since there's no explicit disconnect
                 // This is a workaround since we couldn't confirm if disconnect exists
                 if (this.transport) {
+                    // Attempt to disconnect the transport if a method exists
+                    // if (typeof (this.transport as any).disconnect === 'function') {
+                    //   await (this.transport as any).disconnect();
+                    // }
                     this.transport = null
                 }
             } catch (error) {
-                console.error('Error closing MCP client connection:', error)
+                console.error('Error during MCP client/transport cleanup:', error)
             }
             this.client = null
-        }
-
-        if (this.process) {
-            try {
-                processRegistry.delete(this.processId)
-
-                if (this.process.exitCode === null) {
-                    this.process.kill('SIGTERM')
-
-                    setTimeout(() => {
-                        if (this.process && this.process.exitCode === null) {
-                            this.process.kill('SIGKILL')
-                        }
-                    }, 2000)
-                }
-            } catch (error) {
-                console.error('Error terminating MCP server process:', error)
-            }
-            this.process = null
         }
 
         this.transport = null

@@ -53,6 +53,18 @@ class Custom_MCP implements INode {
     //@ts-ignore
     loadMethods = {
         listActions: async (nodeData: INodeData): Promise<INodeOptionsValue[]> => {
+            // Check if config is missing during load
+            const mcpServerConfig = nodeData.inputs?.mcpServerConfig as string | undefined
+            if (!mcpServerConfig) {
+                return [
+                    {
+                        label: 'No Actions Available Yet',
+                        name: 'config_missing',
+                        description: 'Configure and save the MCP Server Config first, then refresh'
+                    }
+                ]
+            }
+            
             try {
                 const toolset = await this.getTools(nodeData)
                 toolset.sort((a: any, b: any) => a.name.localeCompare(b.name))
