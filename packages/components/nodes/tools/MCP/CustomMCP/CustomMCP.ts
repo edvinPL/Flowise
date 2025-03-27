@@ -118,38 +118,71 @@ class Custom_MCP implements INode {
 
     async init(nodeData: INodeData): Promise<any> {
         console.log(`MCP Node ${nodeData.id}: init() called`) // Confirm init call frequency
+
         try {
             // Get the cached or newly initialized toolkit instance for runtime
             const toolkit = await this.getRuntimeToolkit(nodeData)
             const allTools = toolkit.tools ?? [] // Get all tools from the instance
-            const useAllActions = (nodeData.inputs?.useAllActions as boolean) ?? true
+
+            // --- Debugging Tool Selection ---
+            const useAllActionsInput = nodeData.inputs?.useAllActions
+            const useAllActions = (useAllActionsInput as boolean) ?? true // Default to true if undefined/null
+            console.log(`MCP Node ${nodeData.id}: Input useAllActions = ${useAllActionsInput} (Type: ${typeof useAllActionsInput}), Resolved useAllActions = ${useAllActions}`)
+            // --- End Debugging ---
 
             // If 'Use All Actions' is checked, return all tools immediately
             if (useAllActions) {
+                console.log(`MCP Node ${nodeData.id}: useAllActions is true, returning all ${allTools.length} tools.`)
                 return allTools
             }
 
             // --- Logic for when 'Use All Actions' is false ---
+            console.log(`MCP Node ${nodeData.id}: useAllActions is false, attempting to filter tools.`)
             const _mcpActions = nodeData.inputs?.mcpActions
             let mcpActions: string[] = [] // Ensure type is string array
+
+            // --- Debugging Tool Selection ---
+            console.log(`MCP Node ${nodeData.id}: Raw mcpActions input = ${JSON.stringify(_mcpActions)} (Type: ${typeof _mcpActions})`)
+            // --- End Debugging ---
+
             if (_mcpActions) {
                 try {
-                    mcpActions = typeof _mcpActions === 'string' ? JSON.parse(_mcpActions) : _mcpActions
+                    // PARSING LOGIC: Ensure this handles stringified arrays and direct arrays correctly
+                    const parsedActions = typeof _mcpActions === 'string' ? JSON.parse(_mcpActions) : _mcpActions
+                    if (Array.isArray(parsedActions)) {
+                        mcpActions = parsedActions // Assign if it's an array
+                    } else {
+                        console.warn('MCP actions input was not an array after parsing:', parsedActions)
+                        mcpActions = [] // Ensure it's empty if parsing fails or type is wrong
+                    }
                 } catch (error) {
                     console.error('Error parsing MCP actions:', error)
+                    mcpActions = [] // Ensure it's empty on error
                 }
             }
 
+            // --- Debugging Tool Selection ---
+            console.log(`MCP Node ${nodeData.id}: Parsed mcpActions array = [${mcpActions.join(', ')}]`)
+            // --- End Debugging ---
+
             // If mcpActions array is empty (and useAllActions is false), return no tools
             if (mcpActions.length === 0) {
-                console.warn("MCP Node: 'Use All Actions' is off, but no specific actions were selected.")
+                console.warn("MCP Node: 'Use All Actions' is off, but no specific actions were selected or parsed correctly. Returning NO tools.")
                 return [] // Return empty array - no tools available to the agent
             }
 
             // Filter the tools based on the selected action names
-            return allTools.filter((tool: Tool) => mcpActions.includes(tool.name))
+            console.log(`MCP Node ${nodeData.id}: Filtering ${allTools.length} available tools based on selection: [${mcpActions.join(', ')}]`)
+            const filteredTools = allTools.filter((tool: Tool) => {
+                const toolName = tool.name
+                const isIncluded = mcpActions.includes(toolName)
+                // console.log(`MCP Node ${nodeData.id}: Checking tool '${toolName}' -> Included: ${isIncluded}`) // Uncomment for very verbose logging
+                return isIncluded
+            })
+            console.log(`MCP Node ${nodeData.id}: Found ${filteredTools.length} matching tools.`)
+            return filteredTools
         } catch (error) {
-            console.error('Error initializing MCP node:', error)
+            console.error(`Error initializing MCP node ${nodeData.id}:`, error)
             throw error
         }
     }
