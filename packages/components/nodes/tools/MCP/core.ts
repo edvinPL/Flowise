@@ -1,51 +1,25 @@
-import {
-    CallToolResultSchema,
-    CompatibilityCallToolResultSchema,
-    ListToolsResult,
-    ListToolsResultSchema
-} from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequest, CallToolResultSchema, ListToolsResult, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { StdioClientTransport, StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BaseToolkit, tool, Tool } from '@langchain/core/tools'
-// Import ZodError for specific error catching
-import { ZodError, z } from 'zod'
-
-// --- Shutdown Cleanup ---
-// Export the set so CustomMCP can add to it
-export const activeToolkits = new Set<MCPToolkit>()
-let shuttingDown = false // Prevent race conditions during shutdown
-// --- End Shutdown Cleanup ---
+import { z } from 'zod'
 
 export class MCPToolkit extends BaseToolkit {
     tools: Tool[] = []
     _tools: ListToolsResult | null = null
-    server_config: any
+    model_config: any
     transport: StdioClientTransport | null = null
     client: Client | null = null
-    // Add unique ID for tracking and config hash storage
-    public readonly id = `mcp-tk-${Date.now()}-${Math.random().toString(16).substring(2, 8)}`
-    public configHash?: string // To store a hash/representation of the config it was created with
-
-    constructor(serverParams: any, transportType: 'stdio' | 'sse') {
+    constructor(serverParams: StdioServerParameters | any, transport: 'stdio' | 'sse') {
         super()
-        this.transport = null
-
-        if (transportType === 'stdio') {
-            // Store server params for initialization
-            this.server_config = serverParams
+        if (transport === 'stdio') {
+            this.transport = new StdioClientTransport(serverParams as StdioServerParameters)
         } else {
-            // TODO: SSE transport
+            // TODO: this.transport = new SSEClientTransport(serverParams.url);
         }
     }
-
     async initialize() {
-        if (this.client !== null && this._tools !== null) {
-            // Already initialized
-            return
-        }
-
-        try {
-            // Create client
+        if (this._tools === null) {
             this.client = new Client(
                 {
                     name: 'flowise-client',
@@ -55,58 +29,13 @@ export class MCPToolkit extends BaseToolkit {
                     capabilities: {}
                 }
             )
-
-            // Setup transport configuration from server_config
-            this.setupTransport(this.server_config)
-
-            if (this.transport) {
-                // Connect client to transport (this will likely spawn the process)
-                await this.client.connect(this.transport)
-
-                // List available tools
-                this._tools = await this.client.request({ method: 'tools/list' }, ListToolsResultSchema)
-                this.tools = await this.get_tools()
-            } else {
-                throw new Error('Failed to initialize transport')
+            if (this.transport === null) {
+                throw new Error('Transport is not initialized')
             }
-        } catch (error) {
-            console.error('MCP Initialization Error:', error)
-            // Ensure we clean up partially initialized state
-            await this.cleanup()
-            // Re-throw the error to propagate it
-            throw error
-        }
-    }
+            await this.client.connect(this.transport)
+            this._tools = await this.client.request({ method: 'tools/list' }, ListToolsResultSchema)
 
-    // New method to configure the transport
-    private setupTransport(config: any): void {
-        try {
-            const { command, args, env } = config
-
-            if (!command) {
-                throw new Error('Server command is required in MCP config')
-            }
-
-            // Merge process.env with custom env variables
-            const processEnv = { ...process.env, ...(env || {}) }
-
-            // Handle npx on Windows
-            let finalCommand = command
-            if (command === 'npx' && process.platform === 'win32') {
-                finalCommand = 'npx.cmd'
-            }
-
-            // Create the transport, passing command, args, and the merged env
-            this.transport = new StdioClientTransport({
-                command: finalCommand,
-                args: args || [],
-                // Pass the merged environment variables here
-                env: processEnv
-            })
-        } catch (error) {
-            console.error('Error setting up MCP transport:', error)
-            this.transport = null // Ensure transport is null if setup fails
-            throw error // Re-throw
+            this.tools = await this.get_tools()
         }
     }
 
@@ -127,53 +56,6 @@ export class MCPToolkit extends BaseToolkit {
         })
         return Promise.all(toolsPromises)
     }
-
-    async cleanup(): Promise<void> {
-        // Don't run cleanup multiple times or during shutdown race conditions
-        if (!activeToolkits.has(this)) {
-            // eslint-disable-next-line no-console
-            console.log(`MCPToolkit ${this.id}: Cleanup already called or instance not active.`)
-            return
-        }
-        // eslint-disable-next-line no-console
-        console.log(`Cleaning up MCPToolkit ${this.id}`)
-        // Remove from registry FIRST to prevent re-entry during shutdown loop
-        activeToolkits.delete(this)
-
-        // Close client connection if connected
-        if (this.client) {
-            try {
-                // Using the connect method in the reverse way since there's no explicit disconnect
-                // This is a workaround since we couldn't confirm if disconnect exists
-                if (this.transport) {
-                    // **Attempt to properly close the transport (which should handle the process)**
-                    // Replace 'destroy' with the actual method if available (e.g., close, disconnect)
-                    if (typeof (this.transport as any).destroy === 'function') {
-                        try {
-                            ;(this.transport as any).destroy()
-                            // eslint-disable-next-line no-console
-                            console.log(`MCPToolkit ${this.id}: Transport destroyed.`)
-                        } catch (transportErr) {
-                            console.error(`MCPToolkit ${this.id}: Error destroying transport:`, transportErr)
-                        }
-                    } else {
-                        // eslint-disable-next-line no-console
-                        console.warn(`MCPToolkit ${this.id}: Transport has no 'destroy' method. Process might be orphaned.`)
-                    }
-                    this.transport = null
-                }
-            } catch (error) {
-                console.error('Error during MCP client/transport cleanup:', error)
-            }
-            this.client = null
-        }
-
-        this.transport = null
-        this._tools = null
-        this.tools = []
-        // eslint-disable-next-line no-console
-        console.log(`Cleanup finished for MCPToolkit ${this.id}`)
-    }
 }
 
 export async function MCPTool({
@@ -189,54 +71,11 @@ export async function MCPTool({
 }): Promise<Tool> {
     return tool(
         async (input): Promise<string> => {
-            let outputString: string // To hold the final result string
-            const params = { name: name, arguments: input } // Define params for callTool
-
-            try {
-                // --- Attempt 1: Use the standard CallToolResultSchema with client.callTool ---
-                // eslint-disable-next-line no-console
-                console.log(`MCP Tool ${name}: Attempting request with standard CallToolResultSchema...`)
-                const standardRes = await client.callTool(params, CallToolResultSchema)
-                // eslint-disable-next-line no-console
-                console.log(`MCP Tool ${name}: Received response validated against standard schema:`, standardRes)
-                // Extract and stringify the 'content' field (guaranteed by schema if no error)
-                outputString = JSON.stringify(standardRes.content ?? '')
-            } catch (error1) {
-                // --- Attempt 2: If standard schema failed, try CompatibilityCallToolResultSchema ---
-                // eslint-disable-next-line no-console
-                console.warn(`MCP Tool ${name}: Standard schema failed: ${error1?.message}. Trying compatibility schema...`)
-
-                try {
-                    const compatRes = await client.callTool(params, CompatibilityCallToolResultSchema)
-                    // eslint-disable-next-line no-console
-                    console.log(`MCP Tool ${name}: Received response validated against compatibility schema:`, compatRes)
-                    // Extract and stringify the 'toolResult' field (assuming this schema defines it)
-                    const toolResult = compatRes.toolResult // Access the specific field
-                    outputString = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult ?? '')
-                } catch (error2) {
-                    // --- Both schemas failed ---
-                    // eslint-disable-next-line no-console
-                    console.error(`MCP Tool ${name}: Both standard and compatibility schemas failed. Error 1:`, error1)
-                    // eslint-disable-next-line no-console
-                    console.error(`MCP Tool ${name}: Error 2 (Compat Schema):`, error2)
-
-                    // Optionally try to extract from error1.input if it was a ZodError
-                    let fallbackData = `Error: Tool ${name} failed. Standard Schema Error: ${
-                        error1?.message ?? 'Unknown'
-                    }. Compat Schema Error: ${error2?.message ?? 'Unknown'}`
-                    if (error1 instanceof ZodError && (error1 as any).input) {
-                        try {
-                            fallbackData = `Error: Tool ${name} failed validation. Raw Response: ${JSON.stringify((error1 as any).input)}`
-                        } catch {
-                            /* Ignore stringify error */
-                        }
-                    }
-                    outputString = fallbackData
-                }
-            }
-
-            // Ensure a non-null/undefined string is always returned
-            return outputString ?? `Error: Tool ${name} resulted in undefined output.`
+            const req: CallToolRequest = { method: 'tools/call', params: { name: name, arguments: input } }
+            const res = await client.request(req, CallToolResultSchema)
+            const content = res.content
+            const contentString = JSON.stringify(content)
+            return contentString
         },
         {
             name: name,
@@ -255,50 +94,11 @@ function createSchemaModel(
     if (inputSchema.type !== 'object' || !inputSchema.properties) {
         throw new Error('Invalid schema type or missing properties')
     }
+
     const schemaProperties = Object.entries(inputSchema.properties).reduce((acc, [key, _]) => {
         acc[key] = z.any()
         return acc
     }, {} as Record<string, import('zod').ZodTypeAny>)
+
     return z.object(schemaProperties)
 }
-
-// --- Shutdown Cleanup Logic ---
-async function shutdownGracefully(signal: string) {
-    // Ensure this runs only once
-    if (shuttingDown) return
-    shuttingDown = true
-    // eslint-disable-next-line no-console
-    console.log(`Received ${signal}. Attempting graceful shutdown for ${activeToolkits.size} MCPToolkit(s)...`)
-    // Create a copy of the set to iterate over safely, as cleanup modifies the set
-    const toolkitsToClean = new Set(activeToolkits)
-    if (toolkitsToClean.size === 0) {
-        // eslint-disable-next-line no-console
-        console.log('No active MCPToolkits found to clean up.')
-        return
-    }
-    const cleanupPromises = []
-    for (const toolkit of toolkitsToClean) {
-        // eslint-disable-next-line no-console
-        console.log(`Cleaning up toolkit ${toolkit.id} via shutdown hook...`)
-        // cleanup() removes the toolkit from the original activeToolkits set
-        cleanupPromises.push(toolkit.cleanup())
-    }
-    try {
-        // Wait for all cleanup attempts to settle
-        await Promise.allSettled(cleanupPromises)
-        // eslint-disable-next-line no-console
-        console.log('Finished MCPToolkit cleanup attempts.')
-    } catch (e) {
-        // Should not happen with allSettled, but log just in case
-        // eslint-disable-next-line no-console
-        console.error('Unexpected error during MCPToolkit cleanup:', e)
-    }
-}
-
-// Register the shutdown listeners only once
-const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM']
-signals.forEach((signal) => {
-    process.once(signal, () => shutdownGracefully(signal)) // Use 'once' to avoid multiple listeners if code reloads
-})
-// Consider adding uncaughtException/unhandledRejection handlers here too if needed
-// --- End Shutdown Cleanup Logic ---
